@@ -1,48 +1,89 @@
 import json
+import re
+import csv
+import sys
+from requests_html import HTMLSession
 
 __author__ = 'Yu Chun, Lin'
 
 class user(object):
-    def __init__(self,parmeter:list):
-        self.__url = 'http://course-query.acad.ncku.edu.tw/qry/qry001.php?dept_no={}'
-        self.__courseTime = {}
-        self.__urlList = []
-        self.__getUserCourseInfo()
-        if(type(parmeter) != list):
-            raise TypeError('user object needs a list type object parameter')
-        
-        self.__uWant = parmeter
-        self.__composeUrl()
-
-    def __composeUrl(self):
-        
-        for i in self.__uWant:
-            self.__urlList.append(self.__url.format(i))
-        
-    
-    def __getUserCourseInfo(self):
-        with open('myCourse.json','r') as f:
+    def __init__(self):
+        """
+        open the courses daya
+        """
+        self.__course = list()
+        with open('./myCourse.json','r') as f:
             data = json.load(f)
-            days = data.keys()
-            for i in days:
-                timeStr = data[i].keys()
-                self.__courseTime[i] = []
-                # print(timeStr)
-                for j in timeStr:
-                    self.__courseTime[i] .append(j.split('-'))
-            # print(json.dumps(data,indent=4,ensure_ascii=False))
+            self.__course = data
+            # print(json.dumps(data,indent=4))
 
-    def UserCourse(self):
-        return self.__courseTime
+        self.__url = ''
 
-    def UserInput(self):
-        return self.__uWant
+    
+    def setUrl(self, url):
+        self.__url = url
+    
+    def getCourseWithOutClash(self):
+        session = HTMLSession()
+        response = session.get(self.__url)
+        print(response)
+        blocks = response.html.find('.course_y0')
+        data = list()
+        for i in blocks:
+            sec = i.find('td')
+            temp = {}
+            temp['num'] = sec[2].text
 
-    def UserWantURL(self):
-        return self.__urlList
+            temp['name'] = sec[10].text
+            temp['time'] = sec[16].text
+            temp['discription'] = sec[19].text
+            data.append(temp)
+        data = self.__findCourseWithoutClashing(data)
+        f = csv.writer(open('./course.csv','w'))
+        keys = temp.keys()
+        f.writerow(temp.keys())
+        for i in data:
+            f.writerow([i[x] for x in keys])
+        # f.close()
+        # with open('./course.json','w') as f:
+        #     json.dump(data,f,indent=4,ensure_ascii=False)        
+        
+    def __findCourseWithoutClashing(self,data):
+        withoutClash = []
+        noneDecide = r'未定'
+        noon = r'N'
+        for i in data:
+            if re.search(noneDecide,i['time']) == None:
+                day = i['time'][1]
+                if re.search(noon,i['time']) != None:
+                    pass
+                else:
+                    time = []
+                    try:
+
+                        time.append(int(i['time'][3]))
+                        time.append(int(i['time'][5]))
+                        if self.__judgeClash(self.__course[day],time):
+                            withoutClash.append(i)
+                    except IndexError:
+                        if not int(i['time'][3]) in self.__course[day]:
+                            withoutClash.append(i)
+            else:
+                pass
+                # withoutClash.append(i)
+            pass
+        return withoutClash
+    
+    def __judgeClash(self, data:list, target_course:list):
+        for i in data:
+            if i in range(target_course[0],target_course[1] + 1):
+                return False
+        return True
 
 if __name__ == '__main__' : 
-    u = user(['A9','A0'])
-    data = u.UserWantURL()
-    for i in data:
-        print(i)
+    url = 'http://course-query.acad.ncku.edu.tw/qry/qry001.php?dept_no=A9'
+    if len(sys.argv) > 1:
+        url = sys.argv[1]
+    u = user()
+    u.setUrl(url)
+    u.getCourseWithOutClash()
